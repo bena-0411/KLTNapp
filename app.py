@@ -1,7 +1,4 @@
-import os
-import zipfile
-
-app_code = """import streamlit as st
+import streamlit as st
 import pandas as pd
 import joblib
 import shap
@@ -236,28 +233,3 @@ st.markdown(
     "</p>",
     unsafe_allow_html=True
 )
-"""
-
-req_code = """streamlit==1.40.0
-pandas>=2.0.0
-scikit-learn>=1.2.0
-imbalanced-learn>=0.11.0
-xgboost>=2.0.0
-plotly>=5.0.0
-matplotlib>=3.7.0
-shap>=0.46.0
-joblib>=1.3.0
-"""
-
-os.makedirs('kltnapp', exist_ok=True)
-with open('kltnapp/app.py', 'w', encoding='utf-8') as f:
-    f.write(app_code)
-with open('kltnapp/requirements.txt', 'w', encoding='utf-8') as f:
-    f.write(req_code.strip())
-
-zip_path = '/mnt/data/DiaRisk30Pro_WebApp.zip'
-with zipfile.ZipFile(zip_path, 'w') as zipf:
-    zipf.write('kltnapp/app.py', 'app.py')
-    zipf.write('kltnapp/requirements.txt', 'requirements.txt')
-
-print("Successfully generated updated app.py and zip archive.")
