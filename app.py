@@ -1,9 +1,15 @@
-import streamlit as st
+import os
+import zipfile
+
+app_code = """import streamlit as st
 import pandas as pd
 import joblib
 import shap
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
+import numpy as np
+from datetime import datetime
+import os
 
 # 1. Cấu hình trang
 st.set_page_config(page_title="DiaRisk 30 Pro", page_icon="🩺", layout="wide")
@@ -20,9 +26,32 @@ except Exception as e:
     st.error(f"Không thể tải file mô hình 'kltn_diabetes_model_final.joblib'. Lỗi: {e}")
     st.stop()
 
+# File lưu lịch sử bệnh nhân
+HISTORY_FILE = 'patient_history.csv'
+
+# Sidebar: Lịch sử bệnh nhân
+st.sidebar.header("📜 Lịch sử Bệnh nhân Đã đánh giá")
+if os.path.exists(HISTORY_FILE):
+    df_hist = pd.read_csv(HISTORY_FILE)
+    search_term = st.sidebar.text_input("🔍 Tìm kiếm (Tên / Mã hồ sơ)")
+    if search_term:
+        df_hist = df_hist[
+            df_hist['Họ tên'].astype(str).str.contains(search_term, case=False, na=False) |
+            df_hist['Mã hồ sơ'].astype(str).str.contains(search_term, case=False, na=False)
+        ]
+    st.sidebar.dataframe(df_hist, use_container_width=True)
+    
+    if st.sidebar.button("🗑️ Xóa toàn bộ lịch sử"):
+        if os.path.exists(HISTORY_FILE):
+            os.remove(HISTORY_FILE)
+            st.sidebar.success("Đã xóa lịch sử thành công!")
+            st.rerun()
+else:
+    st.sidebar.info("Chưa có lịch sử bệnh nhân nào được lưu.")
+
 # 3. Giao diện tiêu đề
 st.title("🩺 DiaRisk 30 Pro - Hệ thống Dự báo Tái nhập viện")
-st.markdown("Hệ thống Hỗ trợ Ra quyết định Lâm sàng (CDSS) dự báo nguy cơ tái nhập viện trong 30 days ở bệnh nhân đái tháo đường.")
+st.markdown("Hệ thống Hỗ trợ Ra quyết định Lâm sàng (CDSS) dự báo nguy cơ tái nhập viện trong 30 ngày ở bệnh nhân đái tháo đường.")
 st.markdown("---")
 
 # 4. Form nhập liệu mô phỏng chuẩn giao diện Thesis (Hình 3.6)
@@ -89,6 +118,25 @@ if submit_btn:
             prob = model.predict_proba(X_processed)[0][1]
             risk_percentage = prob * 100
 
+            # Lưu vào lịch sử (CSV)
+            risk_level = 'CAO' if risk_percentage >= 50 else ('TRUNG BÌNH' if risk_percentage >= 25 else 'THẤP')
+            new_record = pd.DataFrame([{
+                'Thời gian': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'Họ tên': patient_name,
+                'Mã hồ sơ': patient_code,
+                'Tuổi': age,
+                'Giới tính': gender,
+                'Xác suất (%)': round(risk_percentage, 2),
+                'Nguy cơ': risk_level
+            }])
+            
+            if os.path.exists(HISTORY_FILE):
+                df_old = pd.read_csv(HISTORY_FILE)
+                df_new = pd.concat([df_old, new_record], ignore_index=True)
+            else:
+                df_new = new_record
+            df_new.to_csv(HISTORY_FILE, index=False, encoding='utf-8-sig')
+
             st.markdown("---")
             # Hiển thị tiêu đề báo cáo giống Hình 3.7 trong Khóa luận
             st.markdown(f"### 📊 Báo cáo Lâm sàng: **{patient_name}** (Mã hồ sơ: `{patient_code}`)")
@@ -151,10 +199,25 @@ if submit_btn:
                     shap_values = explainer(X_processed)
                     feature_names = preprocessor.get_feature_names_out()
                     
-                    exp = shap.Explanation(values=shap_values[0].values, 
-                                           base_values=shap_values[0].base_values, 
-                                           data=X_processed[0], 
-                                           feature_names=feature_names)
+                    val = shap_values.values
+                    if len(val.shape) == 3:
+                        class_idx = 1 if val.shape[2] > 1 else 0
+                        sv = val[0, :, class_idx]
+                        bv = explainer.expected_value
+                        if isinstance(bv, (list, tuple, np.ndarray)):
+                            bv = bv[class_idx]
+                    else:
+                        sv = val[0]
+                        bv = explainer.expected_value
+                        if isinstance(bv, (list, tuple, np.ndarray)):
+                            bv = bv[0]
+
+                    exp = shap.Explanation(
+                        values=sv,
+                        base_values=bv,
+                        data=X_processed[0],
+                        feature_names=feature_names
+                    )
                     
                     fig_shap, ax_shap = plt.subplots(figsize=(6, 5))
                     shap.plots.waterfall(exp, show=False)
@@ -173,3 +236,28 @@ st.markdown(
     "</p>",
     unsafe_allow_html=True
 )
+"""
+
+req_code = """streamlit==1.40.0
+pandas>=2.0.0
+scikit-learn>=1.2.0
+imbalanced-learn>=0.11.0
+xgboost>=2.0.0
+plotly>=5.0.0
+matplotlib>=3.7.0
+shap>=0.46.0
+joblib>=1.3.0
+"""
+
+os.makedirs('kltnapp', exist_ok=True)
+with open('kltnapp/app.py', 'w', encoding='utf-8') as f:
+    f.write(app_code)
+with open('kltnapp/requirements.txt', 'w', encoding='utf-8') as f:
+    f.write(req_code.strip())
+
+zip_path = '/mnt/data/DiaRisk30Pro_WebApp.zip'
+with zipfile.ZipFile(zip_path, 'w') as zipf:
+    zipf.write('kltnapp/app.py', 'app.py')
+    zipf.write('kltnapp/requirements.txt', 'requirements.txt')
+
+print("Successfully generated updated app.py and zip archive.")
