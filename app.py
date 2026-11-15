@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import numpy as np
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import os
 
 # 1. Cấu hình trang
@@ -115,10 +116,13 @@ if submit_btn:
             prob = model.predict_proba(X_processed)[0][1]
             risk_percentage = prob * 100
 
+            # Lấy giờ chuẩn Việt Nam (UTC+7)
+            vn_time = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%Y-%m-%d %H:%M:%S")
+
             # Lưu vào lịch sử (CSV)
             risk_level = 'CAO' if risk_percentage >= 50 else ('TRUNG BÌNH' if risk_percentage >= 25 else 'THẤP')
             new_record = pd.DataFrame([{
-                'Thời gian': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'Thời gian': vn_time,
                 'Họ tên': patient_name,
                 'Mã hồ sơ': patient_code,
                 'Tuổi': age,
@@ -176,16 +180,13 @@ if submit_btn:
                 else:
                     st.success(f"✅ **Nguy cơ THẤP:** Bệnh nhân ở mức an toàn ({risk_percentage:.1f}%). Đủ điều kiện xuất viện theo phác đồ tiêu chuẩn.")
                     
-                # Các chỉ số cần lưu ý tự động
+                # Các chỉ số cần lưu ý được thiết lập hiển thị rõ ràng mọi thông số
                 st.markdown("##### 📌 Các chỉ số cần lưu ý:")
-                if length_of_stay >= 7:
-                    st.write(f"- Thời gian nằm viện kéo dài ({length_of_stay} ngày).")
-                if medication_count >= 12:
-                    st.write(f"- Bệnh nhân sử dụng nhiều loại thuốc kết hợp (đa trị liệu: {medication_count} loại).")
+                st.write(f"- Thời gian nằm viện hiện tại: **{length_of_stay} ngày** (Đã ghi nhận).")
+                st.write(f"- Tổng số thuốc đang dùng: **{medication_count} loại**.")
+                st.write(f"- Huyết áp ghi nhận: **{int(systolic)}/{int(diastolic)} mmHg** (BMI: {bmi}).")
                 if age >= 65:
-                    st.write(f"- Bệnh nhân cao tuổi ({age} tuổi).")
-                if systolic >= 140 or diastolic >= 90:
-                    st.write(f"- Huyết áp cao bất thường ({int(systolic)}/{int(diastolic)} mmHg).")
+                    st.write(f"- Lưu ý: Bệnh nhân thuộc nhóm cao tuổi ({age} tuổi).")
 
             with res_col2:
                 st.markdown("#### 🔬 Giải thích Khuyến nghị (Explainable AI bằng SHAP)")
